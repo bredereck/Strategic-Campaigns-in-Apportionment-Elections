@@ -3,8 +3,7 @@ import random
 import os
 import sys
 import csv
-import math
-import numpy as np
+import math import numpy as np
 from pathlib import Path
 import datetime
 from multiprocessing import Process
@@ -141,4 +140,73 @@ def get_max_prevented_seats_dhondt(election,P,t,seats_to_lose):
 
     return knapsackInput
 
+def get_max_prevented_seats_dhondt_binsearch(election, P, t, seats_to_lose):
+  votes_in_districts = []  # votes for each party in each district
+  T = []  # thresholds in districts
+  seats = []  # number of seats in districts
 
+  for district in election["districts"]:
+    seats.append(district["seats"])
+    votes_in_districts.append(district["votes"])
+    T.append(np.ceil(t * sum(district["votes"])))
+
+  #print(T)
+
+  number_of_districts = len(T)
+  #number_of_districts = 2
+  parties = election['labels']
+
+  knapsackInput = dict()
+
+  for i in range(0, number_of_districts):
+    #print(f"Computing disctrict {i}")
+    minimal_budget_for_seats = [(0, 0)]
+
+    E_initial = election_from_file_multi(parties, votes_in_districts[i])
+    #print(E_initial)
+    initial_seats = int(dhondt_allocation(E_initial, T[i], seats[i], prefer=P)[P])
+    current_seats = int(dhondt_allocation(E_initial, T[i], seats[i], prefer=P)[P])
+
+    if initial_seats <= 0:
+      continue
+
+    votes_to_lose = int(E_initial[P])
+
+    start_votes_no = 0
+
+    possible_lost_seats = min(initial_seats, seats_to_lose)
+    #print(f"Potential votes to lose: {votes_to_lose}")
+    #print(f"Potential seats to lose: {possible_lost_seats}")
+
+
+    for j in range(0, possible_lost_seats + 1):
+      
+      if j == 0:
+        continue
+      left, right = start_votes_no, E_initial[P] + 1
+
+      while left <= right:
+        #print(left, right)
+        mid = (left + right) // 2
+        B = mid
+        E_optimal_des = election_from_file_multi(parties, votes_in_districts[i])
+        dbb = destructive_bribery(E_optimal_des,
+                                  T[i],
+                                  seats[i],
+                                  P,
+                                  initial_seats - j,
+                                  B)
+        if dbb == [False]:
+          left = mid + 1
+        else:
+          right = mid
+        if left == right:
+    #      print(f"To gain {j} seats, need to move {left} votes")
+          minimal_budget_for_seats.append((j, left))
+          break
+
+    #print("Minimal budget: {minimal_budget_for_seats}")
+    #print("-"*70)
+    knapsackInput[i + 1] = minimal_budget_for_seats.copy()
+
+  return knapsackInput

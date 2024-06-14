@@ -268,7 +268,7 @@ if __name__ == "__main__":
             #print(seatsForParty)
             #print(halfSeats)
 
-            #knapsackInput_des = RunExperiment3_multi.get_max_prevented_seats_dhondt(currentElection, party, t, halfSeats)
+            #knapsackInput_des = RunExperiment3_multi.get_max_prevented_seats_dhondt_binsearch(currentElection, party, t, halfSeats)
             #print(knapsackInput_des)
 
 
