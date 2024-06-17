@@ -6,7 +6,7 @@ Elections".
 The files contain:
  - directories `DATA` and `Code/Experiment3/data` containing the data we used
    in the experiments
- - directory `Code`
+ - directory `Code` containing
    - bash scripts `run_single_experiment_1.sh`, `run_single_avg_experiment_1.sh`,
      `run_multi_experiment_1.sh`, and `run_multi_avg_experiment_1.sh` to run
      parts of experiments 1, according to the names for single party and
@@ -23,5 +23,5 @@ The files contain:
      (line 217) whose respective values for the results presented in the paper
      are 3, 16, and 1 for the election in Poland, Portugal, and Argentina
      respectively. Further, one needs to set correct values of the
-     for-loop-steering variable `mergesCount` to compute the results for appropriate
+     for-loop control variable `mergesCount` (line 240) to compute the results for appropriate
      numbers of merges presented in the article.
