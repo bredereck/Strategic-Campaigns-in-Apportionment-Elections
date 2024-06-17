@@ -1,6 +1,7 @@
 from Election import Election
 from Apportionment import *
 import copy
+import numpy as np
 
 """
   E = Election
@@ -11,8 +12,48 @@ import copy
   B = Budget
 """
 
+#-----------------------------------------------------------------------------------
+#                 Seats Count
+#-----------------------------------------------------------------------------------
+#
+
+# D'hondt apportionment in single district. Slow algorithm, calculates all needed quotients.
+# votes: vector of votes
+# seats: number of seats to allocate
+def dhondt_single_district(votes, seats, T):
+    votes_with_threshold = votes.copy()
+
+    for i in range(0,len(votes_with_threshold)):
+        if votes_with_threshold[i] < T:
+            votes_with_threshold[i] = 0
 
 
+    result = np.array([0 for _ in votes_with_threshold])
+    divisions = np.array([float(v) for v in votes_with_threshold] * seats).reshape((seats, len(votes_with_threshold)))
+    vector = np.array(range(1, seats+1))
+    divisions /= vector[:, None]
+    while seats > 0:
+        y, x = np.unravel_index(divisions.argmax(), divisions.shape)
+        divisions[y][x] = 0
+        result[x] += 1
+        seats -= 1
+    return result
+# output: vector of allocated seats in the same order as votes in vector of votes
+
+def get_count_party_seats_per_district(party, election, T):
+  seatsPerDistrict = dict()
+  for i in range(0,len(election["districts"])):
+    district = election["districts"][i]
+    t = T[i]
+    seatsPerDistrict[district["number"]] = dhondt_single_district(
+        district["votes"], district["seats"], t)[party]
+  #print(seatsPerDistrict)
+  return seatsPerDistrict
+
+
+def get_count_party_all_seats(party, election, T):
+  return sum( districtSeats for districtSeats in
+      get_count_party_seats_per_district(party, election, T).values())
 
 #-----------------------------------------------------------------------------------
 #                 The Campaigns
@@ -77,6 +118,7 @@ def constructive_bribery(E, T, K, P, L, B, allocation_method = dhondt_allocation
 
     B = min(E.num_votes() - E[P], B)
 
+
     if E[P] + B < T:
         return [False] # P won't reach the threshold
     if allocation_method(E, T, K, prefer = P)[P] >= L:
@@ -84,14 +126,15 @@ def constructive_bribery(E, T, K, P, L, B, allocation_method = dhondt_allocation
 
     S = K - L # The number of seats the other parties may get at
               # most before P gets L
+
     gamma = get_gamma_cached() # gamma[p][s] is the min budget
             # needed s.t. p receives exactly s seats before P gets L
 
     #print(gamma["Likud"])
-
     table = [[float('inf') for s in range(S+1)] for i in range(len(E.parties()))]
     table[0][0] = 0
     order = tuple(E.parties_w_o(P))
+
     for i in range(1, len(order)+1):
         curr_party = order[i-1]
         for s in range(S+1):
@@ -250,7 +293,7 @@ def approx_constructive_bribery(E, T, K, P, B, allocation_method):
         return dict()
     vector = {P : -B}
     E = E.remove(P)
-    E = E.apply_threshold(T)
+    E = E.apply_threshold(max(T,1))
     while B > 0:
         worst = E.get_worst_party()
         vector[worst] = min(E[worst], B)
@@ -365,7 +408,6 @@ def destructive_bribery_to_weakest(E_wea_des, T, K, P, L, B):
             return [False,dhondt_allocation(E_wea_des, T, K, prefer=P)[P]]
 
 
-
 def divisor_app(r, D, k, T):
     """P -- vote distribution for parties (list)
        D -- at least k divisors for the method used (list)
@@ -407,6 +449,9 @@ def findbalancedbribery(votes, k, target, divisors, T):
     #print(divisor_app(votes, divisors, k))
     while lowerbound < upperbound:
         maxred = (lowerbound + upperbound) // 2
+        #print(lowerbound)
+        #print(upperbound)
+        #print(maxred)
         diffvotes = [int(-maxred * votes[i] / max(votes[1:]))
                      for i in range(len(votes))]
         diffvotes[0] = -sum(diffvotes[1:])
@@ -422,6 +467,9 @@ def findbalancedbribery(votes, k, target, divisors, T):
         else:
             lowerbound = maxred+1
             #lowerbound += 1
+        #print(upperbound)
+        #print(lowerbound)
+        #print(newresult)
     #print(newvotes)
 
     # check if balanced bribery is correct
@@ -430,12 +478,12 @@ def findbalancedbribery(votes, k, target, divisors, T):
     appmod = dhondt_app(votesmod, k, T)
     corr = True
     if appmod[0] < target:
-        #print("optimal bribery failed")
+        print("optimal bribery failed")
         corr = False
-        #print(votes)
-        #print(balbrb)
-        #print(target, appmod, app)
-        #print(votesmod)
+        print(votes)
+        print(balbrb)
+        print(target, appmod, app)
+        print(votesmod)
         #raise Exception
 
     return [balbrb,corr]
@@ -457,9 +505,47 @@ def findbalancedbribery_con(votes, k, target, divisors, T):
             upperbound = maxred
             #upperbound -= 1
             balbrb = diffvotes
+            given_greater = diffvotes[0]
         else:
             lowerbound = maxred+1
             #lowerbound += 1
+            given_lower = diffvotes[0]
+        #print(upperbound)
+        #print(lowerbound)
+        #print(newresult)
+    #print(newvotes)
+    rest = given_greater - given_lower
+    if rest>2 and newresult[0]<target:
+        ind = []
+        newvotes_2 = newvotes[1:].copy()
+        m=max(newvotes_2)
+
+        for i in range(1,rest):
+            for j in range(1,len(newvotes)):
+                if newvotes[j] == m:
+                    ind.append(j)
+                    newvotes_2 = [value for value in newvotes_2 if value <= max(m-1,0)]
+                    if max(newvotes_2) > 0:
+                        m = max(newvotes_2)
+                    else:
+                        newvotes_2 = newvotes[1:].copy()
+                        m = max(newvotes_2)
+                    break
+
+        for i in range(1, rest):
+            diffvotes_new = diffvotes.copy()
+            diffvotes_new[0] += i
+
+            for j in range(0,i):
+                diffvotes_new[ind[j]] -= 1
+            newvotes_new = [votes[i] + diffvotes_new[i] for i in range(len(votes))]
+            newresult_new = divisor_app(newvotes_new, divisors, k, T)
+            #print(newresult_new)
+            #print(diffvotes_new)
+            if newresult_new[0] >= target:
+                #print(newresult_new[0])
+                balbrb = diffvotes_new
+                break
 
     # check if balanced bribery is correct
     app = dhondt_app(votes, k, T)
@@ -467,12 +553,12 @@ def findbalancedbribery_con(votes, k, target, divisors, T):
     appmod = dhondt_app(votesmod, k, T)
     corr = True
     if appmod[0] < target:
-        #print("optimal bribery failed")
+        print("optimal bribery failed")
         corr = False
-        #print(votes)
-        #print(balbrb)
-        #print(target, appmod, app)
-        #print(votesmod)
+        print(votes)
+        print(balbrb)
+        print(target, appmod, app)
+        print(votesmod)
         #raise Exception
 
     return [balbrb,corr]
@@ -503,12 +589,12 @@ def findbalancedbribery_des(votes, k, target, divisors, T):
     votesmod = [votes[i]+balbrb[i] for i in range(len(votes))]
     appmod = dhondt_app(votesmod, k, T)
     if appmod[0] > target:
-        #print("optimal bribery failed")
+        print("optimal bribery failed")
         corr = False
-        #print(votes)
-        #print(balbrb)
-        #print(target, appmod, app)
-        #print(votesmod)
+        print(votes)
+        print(balbrb)
+        print(target, appmod, app)
+        print(votesmod)
         #raise Exception
 
     return [balbrb,corr]

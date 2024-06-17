@@ -248,7 +248,7 @@ if __name__ == "__main__":
             seatsToMajority = int(majorityQuota - seatsForParty)
             #print(seatsToMajority)
 
-    # constructive
+####################### constructive
             pricesOfGain = compute_election_statistics(preferredParty,
                 currentElection, None, seatsToMajority)
             #print(pricesOfGain)
@@ -259,24 +259,27 @@ if __name__ == "__main__":
             #print(knapsackInput_test)
 
 
-            #knapsackInput = RunExperiment3_multi.get_max_additional_seats_dhondt(currentElection, party,t, seatsToMajority)
-            #print(knapsackInput)
-
-
-    # destructive
+####################### destructive
             #halfSeats = int(seatsForParty/2)
             #print(seatsForParty)
             #print(halfSeats)
 
-            #knapsackInput_des = RunExperiment3_multi.get_max_prevented_seats_dhondt_binsearch(currentElection, party, t, halfSeats)
+            #knapsackInput = RunExperiment3_multi.get_max_prevented_seats_dhondt_binsearch(currentElection, party, t, halfSeats)
             #print(knapsackInput_des)
 
 
+
+############DEBUG##############
             #print("No. of gained seats: {}".format(kILP.solve_for_given_budget(knapsackInput, budget)))
             #print("Price of majority:{}".format(kILP.solve_for_given_value(knapsackInput,seatsToMajority)))
+###############################
+
             priceOfMajority = kILP.solve_for_given_value(knapsackInput, seatsToMajority)
             if priceOfMajority != None:
+####################### constructive
                 trialScores.append(float(priceOfMajority)/seatsToMajority)
+####################### destructive
+                #trialScores.append(float(priceOfMajority)/halfSeats)
             else:
                 trial_none_number += 1
 

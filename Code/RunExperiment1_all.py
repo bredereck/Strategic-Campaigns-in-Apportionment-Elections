@@ -13,65 +13,36 @@ from Apportionment import *
 from Campaigns1 import *
 
 if len(sys.argv) < 5:
-    print("Analysis.py <Dataset> <Seats> <target party (best, median, worst, secondbest, thirdbest, worst_pos)> <Threshold>")
+    print("Analysis.py <Dataset> <Seats> <target party (all)> <Threshold>")
     exit()
 
 
-
 E = election_from_file(sys.argv[1])
-E_optimal_con = election_from_file(sys.argv[1])
-E_optimal_des = election_from_file(sys.argv[1])
-E_strongest_con = election_from_file(sys.argv[1])
-E_strongest_des = election_from_file(sys.argv[1])
-E_weakest_con = election_from_file(sys.argv[1])
-E_weakest_des = election_from_file(sys.argv[1])
-E_balanced_con = election_from_file(sys.argv[1])
-E_balanced_des = election_from_file(sys.argv[1])
 K = int(sys.argv[2])
 t = float(sys.argv[4])
 T = math.ceil(t*E.num_votes())
 target_party = sys.argv[3]
-if target_party == "best":
-    P = E.get_x_best_party(1)
-elif target_party == "median":
-    P = E.get_x_best_party(E.num_parties() // 2)
-elif target_party == "worst":
-    P = E.get_worst_party()
-elif target_party == "secondbest":
-    P = E.get_x_best_party(2)
-elif target_party == "thirdbest":
-    P = E.get_x_best_party(3)
-elif target_party == "worst_pos":
-    possible_parties = []
-    for p in E.parties():
-        if dhondt_allocation(E, T, K, prefer=p)[p] >= 1:
-            possible_parties.append(p)
-    vot = E[possible_parties[0]].copy()
-    P = possible_parties[0].copy()
-    for p in possible_parties:
-        if E[p] < vot:
-            vot = E[p].copy()
-            P = p.copy()
-else:
+if target_party != "all":
     print("Unknown option: %s"%target_party)
     exit()
 cur_time = datetime.datetime.now()
-target_dir = "../DATA/%s/%s/%s/" % ('1', target_party, sys.argv[1].rsplit("/", 1)[1])
+target_dir = "../DATA/%s/%s/" % (target_party.replace("/","_"), sys.argv[1].rsplit("/", 1)[1])
 Path(target_dir).mkdir(parents=True, exist_ok=True)
 
-no_manipulation = dhondt_allocation(E, T, K, prefer=P)[P]
-F = E.remove(P)
+
+# contructive bribery - optimal, from the strongest rival(s), from the weakest rival(s)
+def get_max_additional_seats_dhondt(P):
+    added_votes = open(target_dir  + P.replace("/","_") + "-DHondt-AddedVotes-optimal.dat", "w")
+    added_votes_strongest = open(target_dir  + P.replace("/","_") + "-DHondt-AddedVotes-strongest.dat", "w")
+    added_votes_weakest = open(target_dir  + P.replace("/","_") + "-DHondt-AddedVotes-weakest.dat", "w")
 
 
-# contructive bribery - optimal, from the strongest party(ies), from the weakest party(ies)
-def get_max_additional_seats_dhondt():
-    added_votes = open(target_dir  + P + "-DHondt-AddedVotes-optimal.dat", "w")
-    added_votes_strongest = open(target_dir  + P + "-DHondt-AddedVotes-strongest.dat", "w")
-    added_votes_weakest = open(target_dir  + P + "-DHondt-AddedVotes-weakest.dat", "w")
-
+    E = election_from_file(sys.argv[1])
+    no_manipulation = dhondt_allocation(E, T, K, prefer=P)[P]
     goal = no_manipulation
     con = [0,P,no_manipulation]
 
+    F = E.remove(P)
     rest_votes = int(F.num_votes())
     i = no_manipulation + 1
 
@@ -79,30 +50,23 @@ def get_max_additional_seats_dhondt():
     print("%.5f %s %f %f %f" % (0, P, E[P], no_manipulation, goal), file=added_votes_strongest)
     print("%.5f %s %f %f %f" % (0, P, E[P], no_manipulation, goal), file=added_votes_weakest)
 
-# optimal
+
     for B in range(0,rest_votes+1):
-        if goal >= no_manipulation+1:
+        if goal>=no_manipulation+1:
             break
         E_optimal_con = election_from_file(sys.argv[1])
         cbb = constructive_bribery(E_optimal_con, T, K, P, i, B)
         if cbb[0] not in [True, False]:
             print("%s" % con, file=added_votes)
-            print("%.5f %s %f %f %f" % (B,P,no_manipulation,cbb[1],cbb[0][P]), file=added_votes)
-            for p in cbb[0].keys():
-                E_optimal_con[p] -= cbb[0][p]
-            print("%s" % E_optimal_con.votealloc, file=added_votes)
-            x1 = B/(rest_votes+E[P])
-            x2 = 1-x1
-            x3 = B/rest_votes
-            x4 = 1-x3
-            print("%.5f %.5f %.5f %.5f" % (x1,x2,x3,x4), file=added_votes)
+            print("%.5f %s %f %f %f %s" % (B,P,no_manipulation,cbb[1],cbb[0][P], cbb[0]), file=added_votes)
             goal = cbb[1]
+            x_opt_con = float(B)
         if cbb[0] in [True, False]:
             con = [B,P,goal]
     print("%s" % con, file=added_votes)
+    print("optimal done")
     added_votes.close()
 
-# from the strongest party(ies)
     goal = no_manipulation
     con_str = [0, P, goal]
     for B in range(0, rest_votes + 1):
@@ -112,21 +76,15 @@ def get_max_additional_seats_dhondt():
         cbb_str = constructive_bribery_from_strongest(E_strongest_con, T, K, P, i, B)
         if cbb_str[0] not in [True, False]:
             print("%s" % con_str, file=added_votes_strongest)
-            print("%.5f %s %f %f %f" % (B,P,no_manipulation,cbb_str[1],cbb_str[0][P]-E[P]), file=added_votes_strongest)
-            print("%s" % E_strongest_con.votealloc,
-                  file=added_votes_strongest)
-            x1 = B/(rest_votes+E[P])
-            x2 = 1-x1
-            x3 = B/rest_votes
-            x4 = 1-x3
-            print("%.5f %.5f %.5f %.5f" % (x1,x2,x3,x4), file=added_votes_strongest)
+            print("%.5f %s %f %f %f %s" % (B,P,no_manipulation,cbb_str[1],cbb_str[0][P]-E[P], cbb_str[0]), file=added_votes_strongest)
             goal = cbb_str[1]
+            x_str_con = float(B)
         if cbb_str[0] in [True, False]:
             con_str = [B,P,cbb_str[1]]
     print("%s" % con_str, file=added_votes_strongest)
+    print("strongest done")
     added_votes_strongest.close()
 
-# from the weakest party(ies)
     goal = no_manipulation
     con_wea = [0, P, goal]
     for B in range(0, rest_votes + 1):
@@ -136,28 +94,27 @@ def get_max_additional_seats_dhondt():
         cbb_wea = constructive_bribery_from_weakest(E_weakest_con, T, K, P, i, B)
         if cbb_wea[0] not in [True, False]:
             print("%s" % con_wea, file=added_votes_weakest)
-            print("%.5f %s %f %f %f" % (B, P, no_manipulation, cbb_wea[1], cbb_wea[0][P] - E[P]),
+            print("%.5f %s %f %f %f %s" % (B, P, no_manipulation, cbb_wea[1], cbb_wea[0][P] - E[P], cbb_wea[0]),
                       file=added_votes_weakest)
-            print("%s" % E_weakest_con.votealloc,
-                  file=added_votes_weakest)
-            x1 = B/(rest_votes+E[P])
-            x2 = 1-x1
-            x3 = B/rest_votes
-            x4 = 1-x3
-            print("%.5f %.5f %.5f %.5f" % (x1,x2,x3,x4), file=added_votes_weakest)
             goal = cbb_wea[1]
+            x_wea_con = float(B)
         if cbb_wea[0] in [True, False]:
             con_wea = [B, P, cbb_wea[1]]
     print("%s" % con_wea, file=added_votes_weakest)
     added_votes_weakest.close()
+    print("weakest done")
+
+    return [x_opt_con,x_str_con,x_wea_con]
 
 
-# destructive bribery - optimal, to the strongest party, to the weakest party
-def get_max_prevented_seats_dhondt():
-    removed_votes = open(target_dir + P +"-DHondt-RemovedVotes-optimal.dat", "w")
-    removed_votes_str = open(target_dir  + P + "-DHondt-RemovedVotes_strongest.dat", "w")
-    removed_votes_wea = open(target_dir  + P + "-DHondt-RemovedVotes_weakest.dat", "w")
+# destructive bribery - optimal, to the strongest candidate, to the weakest candidate
+def get_max_prevented_seats_dhondt(P):
+    removed_votes = open(target_dir + P.replace("/","_") +"-DHondt-RemovedVotes-optimal.dat", "w")
+    removed_votes_str = open(target_dir  + P.replace("/","_") + "-DHondt-RemovedVotes_strongest.dat", "w")
+    removed_votes_wea = open(target_dir  + P.replace("/","_") + "-DHondt-RemovedVotes_weakest.dat", "w")
 
+    E = election_from_file(sys.argv[1])
+    no_manipulation = dhondt_allocation(E, T, K, prefer=P)[P]
     goal = no_manipulation
     con = [0, P, goal]
 
@@ -169,8 +126,10 @@ def get_max_prevented_seats_dhondt():
         print("%.5f %s %f %s" % (0, P, no_manipulation, "no bribery possible"), file=removed_votes)
         print("%.5f %s %f %s" % (0, P, no_manipulation, "no bribery possible"), file=removed_votes_str)
         print("%.5f %s %f %s" % (0, P, no_manipulation, "no bribery possible"), file=removed_votes_wea)
+        x_opt_des = 10000
+        x_str_des = 10000
+        x_wea_des = 10000
     else:
-# optimal
         i = no_manipulation - 1
         for B in range(0,E[P]+1):
             if goal <= no_manipulation-1:
@@ -179,25 +138,13 @@ def get_max_prevented_seats_dhondt():
             dbb = destructive_bribery(E_optimal_des, T, K, P, i, B)
             if dbb[0] not in [True, False]:
                 print("%s" % con, file=removed_votes)
-                print("%.5f %s %f %f %f" % (B, P,no_manipulation, dbb[1], dbb[0][P]), file=removed_votes)
-                for p in dbb[0].keys():
-                    E_optimal_des[p] -= dbb[0][p]
-                print("%s" % E_optimal_des.votealloc,
-                      file=removed_votes)
-                if B != 0:
-                    x1 = B/(E.num_votes())
-                    x2 = 1-x1
-                    x3 = B/E[P]
-                    x4 = 1-x3
-                    print("%.5f %.5f %.5f %.5f" % (x1,x2,x3,x4), file=removed_votes)
-                else:
-                    print("%.5f" % 0, file=removed_votes)
+                print("%.5f %s %f %f %f %s" % (B, P,no_manipulation, dbb[1], dbb[0][P], dbb[0]), file=removed_votes)
                 goal = dbb[1]
+                x_opt_des = float(B)
             if dbb[0] in [True,False]:
                 con = [B, P, goal]
         print("%s" % con, file=removed_votes)
 
-# to the strongest party
         goal = no_manipulation
         con_str = [0, P, goal]
         for B in range(0, E[P] + 1):
@@ -207,24 +154,14 @@ def get_max_prevented_seats_dhondt():
             dbb_str = destructive_bribery_to_strongest(E_strongest_des, T, K, P, i, B)
             if dbb_str[0] not in [True, False]:
                 print("%s" % con_str, file=removed_votes_str)
-                print("%.5f %s %f %f %f" % (B, P, no_manipulation, dbb_str[1], E[P]-dbb_str[0][P]),
+                print("%.5f %s %f %f %f %s" % (B, P, no_manipulation, dbb_str[1], E[P]-dbb_str[0][P], dbb_str[0]),
                           file=removed_votes_str)
-                print("%s" % E_strongest_des.votealloc,
-                      file=removed_votes_str)
-                if B != 0:
-                    x1 = B/(E.num_votes())
-                    x2 = 1-x1
-                    x3 = B/E[P]
-                    x4 = 1-x3
-                    print("%.5f %.5f %.5f %.5f" % (x1,x2,x3,x4), file=removed_votes_str)
-                else:
-                    print("%.5f" % 0, file=removed_votes_str)
                 goal = dbb_str[1]
+                x_str_des = float(B)
             if dbb_str[0] in [True, False]:
                 con_str = [B, P, dbb_str[1]]
         print("%s" % con_str, file=removed_votes_str)
 
-# to the weakest party
         goal = no_manipulation
         con_wea = [0, P, goal]
         for B in range(0, E[P] + 1):
@@ -234,19 +171,10 @@ def get_max_prevented_seats_dhondt():
             dbb_wea = destructive_bribery_to_weakest(E_weakest_des, T, K, P, i, B)
             if dbb_wea[0] not in [True, False]:
                 print("%s" % con_wea, file=removed_votes_wea)
-                print("%.5f %s %f %f %f" % (B, P, no_manipulation, dbb_wea[1], E[P]-dbb_wea[0][P]),
+                print("%.5f %s %f %f %f %s" % (B, P, no_manipulation, dbb_wea[1], E[P]-dbb_wea[0][P], dbb_wea[0]),
                           file=removed_votes_wea)
-                print("%s" % E_weakest_des.votealloc,
-                          file=removed_votes_wea)
-                if B != 0:
-                    x1 = B/(E.num_votes())
-                    x2 = 1-x1
-                    x3 = B/E[P]
-                    x4 = 1-x3
-                    print("%.5f %.5f %.5f %.5f" % (x1,x2,x3,x4), file=removed_votes_wea)
-                else:
-                    print("%.5f" % 0, file=removed_votes_wea)
                 goal = dbb_wea[1]
+                x_wea_des = float(B)
             if dbb_wea[0] in [True, False]:
                 con_wea = [B, P, dbb_wea[1]]
         print("%s" % con_wea, file=removed_votes_wea)
@@ -254,6 +182,8 @@ def get_max_prevented_seats_dhondt():
     removed_votes.close()
     removed_votes_str.close()
     removed_votes_wea.close()
+
+    return [x_opt_des,x_str_des,x_wea_des]
 
 
 # three functions for constructive balanced bribery
@@ -290,14 +220,16 @@ def experiment(parties, votes, seats, k, gainvals, identifier="no identifier"):
     return [results,corr]
 
 
-def constructive_exp_single(gainvals):
+def constructive_exp_single(gainvals, P):
+    E = election_from_file(sys.argv[1])
     year = sys.argv[1][-4:]
     results = []
+    F = E.remove(P)
     votes = [E[P]]
     parties = [P]
     votes_above = []
     parties_above = []
-    seats = [no_manipulation]
+    seats = [dhondt_allocation(E, T, K, prefer=P)[P]]
     seats_above = []
     for p in F.parties():
         votes.append(F[p])
@@ -308,6 +240,12 @@ def constructive_exp_single(gainvals):
             votes_above.append(votes[i])
             parties_above.append(parties[i])
             seats_above.append(seats[i])
+    #print(parties)
+    #print(votes)
+    #print(parties_above)
+    #print(votes_above)
+    #print(seats)
+    #print(divisor_app(votes, divisors, K, T))
 
     results_exp = experiment(parties, votes, seats, K, gainvals, identifier=year)
     results += results_exp[0]
@@ -315,28 +253,33 @@ def constructive_exp_single(gainvals):
     w = np.array(votes)
     u = np.array(results[0][-2])
     votes_brb = w + u
-
+    #print(votes_brb)
+    #print(parties)
     for i in range(0,len(votes)):
-        E_balanced_con[parties[i]] = votes_brb[i]
+        E[parties[i]] = votes_brb[i]
+    return [E, results, dhondt_allocation(E, T, K, prefer=P)[P], results_exp[1]]
 
-    return [E_balanced_con, results, dhondt_allocation(E_balanced_con, T, K, prefer=P)[P], results_exp[1]]
 
+def balanced_additional_dhondt(P):
+    added_votes_bal = open(target_dir + P.replace("/","_") + "-DHondt-AddedVotes-balanced.dat", "w")
 
-def balanced_additional_dhondt():
-    added_votes_bal = open(target_dir + P + "-DHondt-AddedVotes-balanced.dat", "w")
+    E_balanced_con = election_from_file(sys.argv[1])
+    no_manipulation = dhondt_allocation(E_balanced_con, T, K, prefer=P)[P]
+    under_threshold = T - E_balanced_con[P]
 
-    under_threshold = T - E[P]
-
-    print("%.5f %s %f %f" % (0, P, E[P], no_manipulation), file=added_votes_bal)
+    print("%.5f %s %f %f" % (0, P, E_balanced_con[P], no_manipulation), file=added_votes_bal)
 
     gainvals = list(range(1, 2))
-    results = constructive_exp_single(gainvals)
+    results = constructive_exp_single(gainvals, P)
     E_balanced_con = results[0]
 
-    print("%.5f %s %f %f %f" % ( results[1][0][-1], P, no_manipulation, results[2], results[1][0][-1]),
+    print("%.5f %s %f %f %f %s" % ( results[1][0][-1], P, no_manipulation, results[2], results[1][0][-1], E_balanced_con.votealloc),
           file=added_votes_bal)
-    print("%s" % E_balanced_con.votealloc, file=added_votes_bal)
 
+    E = election_from_file(sys.argv[1])
+    x_bal_con = float(results[1][0][-1])
+
+    F = E_balanced_con.remove(P)
     res = dhondt_allocation(E, T, K, prefer=P)[P]
     R = F.get_x_best_party(1)
     results_con = dhondt_allocation(E_balanced_con, T, K, prefer=P)[P]
@@ -345,20 +288,14 @@ def balanced_additional_dhondt():
         E_balanced_con[R] += 1
         results_con = dhondt_allocation(E_balanced_con, T, K, prefer=P)[P]
 
-        print("%s %f %.5f %s %f %f" % (results[-1], res, E_balanced_con[P]-E[P], P, results_con, under_threshold),
+        print("%s %f %.5f %s %f %f" % (results[-1], res, E_balanced_con[P] - E[P], P, results_con, under_threshold),
               file=added_votes_bal)
 
-    B = results[1][0][-1]
-    if B != 0:
-        x1 = B/(E.num_votes())
-        x2 = 1-x1
-        x3 = B/(E.num_votes()-E[P])
-        x4 = 1-x3
-        print("%.5f %.5f %.5f %.5f" % (x1,x2,x3,x4), file=added_votes_bal)
-    else:
-        print("%.5f" % 0, file=added_votes_bal)
+    print("%s %f %.5f %s %f %f" % (results[-1], res, E_balanced_con[P], P, results_con, under_threshold),
+          file=added_votes_bal)
 
     added_votes_bal.close()
+    return x_bal_con
 
 
 # three functions for destructive balanced bribery
@@ -370,7 +307,6 @@ def experiment_des(parties, votes, seats, k, lostvals, identifier="no identifier
         target = origresult[0] - lostseats
         if target > k:
             continue
-
 
         # Balanced Bribery
         balbrbres = findbalancedbribery_des(votes, k, target, divisors, T)
@@ -396,15 +332,16 @@ def experiment_des(parties, votes, seats, k, lostvals, identifier="no identifier
 
 
 
-def destructive_exp_single(lostvals):
+def destructive_exp_single(lostvals,P):
+    E = election_from_file(sys.argv[1])
     year = sys.argv[1][-4:]
     results = []
-    #F = E.remove(P)
+    F = E.remove(P)
     votes = [E[P]]
     parties = [P]
     votes_above = []
     parties_above = []
-    seats = [no_manipulation]
+    seats = [dhondt_allocation(E, T, K, prefer=P)[P]]
     seats_above = []
     for p in F.parties():
         votes.append(F[p])
@@ -425,32 +362,35 @@ def destructive_exp_single(lostvals):
     #print(votes_brb)
     #print(parties)
     for i in range(0,len(votes)):
-        E_balanced_des[parties[i]] = votes_brb[i]
+        E[parties[i]] = votes_brb[i]
     #print(E)
-    return [E_balanced_des, results, dhondt_allocation(E_balanced_des, T, K, prefer=P)[P], results_exp[1]]
+    return [E, results, dhondt_allocation(E, T, K, prefer=P)[P], results_exp[1]]
 
 
+def balanced_prevented_dhondt(P):
+    removed_votes_bal = open(target_dir + P.replace("/","_") + "-DHondt-RemovedVotes-balanced.dat", "w")
 
-def balanced_prevented_dhondt():
-    removed_votes_bal = open(target_dir + P + "-DHondt-RemovedVotes-balanced.dat", "w")
+    E_balanced_des = election_from_file(sys.argv[1])
+    no_manipulation = dhondt_allocation(E_balanced_des, T, K, prefer=P)[P]
+    under_threshold = T - E_balanced_des[P]
+    E = election_from_file(sys.argv[1])
 
-    under_threshold = T - E[P]
-
-    print("%.5f %s %f %f" % (0, P, E[P], no_manipulation), file=removed_votes_bal)
+    print("%.5f %s %f %f" % (0, P, E_balanced_des[P], no_manipulation), file=removed_votes_bal)
 
     lostvals = list(range(1, 2))
 
     if no_manipulation == 0:
         print("%s %f %s" % ( P, no_manipulation, "bribery impossible"),
             file=removed_votes_bal)
+        x_bal_des = 10000
     else:
-        results = destructive_exp_single(lostvals)
+        results = destructive_exp_single(lostvals,P)
         E_balanced_des = results[0]
-        print("%.5f %s %f %f %f" % (results[1][0][-1], P, no_manipulation, results[2], results[1][0][-1]),
+        print("%.5f %s %f %f %f %s" % (results[1][0][-1], P, no_manipulation, results[2], results[1][0][-1], E_balanced_des.votealloc),
           file=removed_votes_bal)
-        print("%s" % E_balanced_des.votealloc, file=removed_votes_bal)
 
         res = dhondt_allocation(E, T, K, prefer=P)[P]
+        F = E_balanced_des.remove(P)
         R = F.get_x_best_party(1)
         results_con = dhondt_allocation(E_balanced_des, T, K, prefer=P)[P]
         while results_con == res - 1:
@@ -459,37 +399,104 @@ def balanced_prevented_dhondt():
             results_con = dhondt_allocation(E_balanced_des, T, K, prefer=P)[P]
 
             print("%s %f %.5f %s %f %f" % (results[-1], res, E_balanced_des[P], P, results_con, under_threshold),
-                    file=removed_votes_bal)
+                  file=removed_votes_bal)
 
-        B = -results[1][0][-1]
-        if B != 0:
-            x1 = B/(E.num_votes())
-            x2 = 1-x1
-            x3 = B/E[P]
-            x4 = 1-x3
-            print("%.5f %.5f %.5f %.5f" % (x1,x2,x3,x4), file=removed_votes_bal)
-        else:
-            print("%.5f" % 0, file=removed_votes_bal)
+        print("%s %f %.5f %s %f %f" % (results[-1], res, E_balanced_des[P], P, results_con, under_threshold),
+          file=removed_votes_bal)
+
+
+        x_bal_des = -float(results[1][0][-1])
 
     removed_votes_bal.close()
+    return x_bal_des
+
 
 
 print("File: ", sys.argv[1])
 print(sys.argv[3])
 
-get_max_additional_seats_dhondt()
-print("#1 done")
+eff_optimal_con = []
+eff_strongest_con = []
+eff_weakest_con = []
+eff_balanced_con = []
 
-get_max_prevented_seats_dhondt()
-print("#2 done")
+eff_optimal_des = []
+eff_strongest_des = []
+eff_weakest_des = []
+eff_balanced_des = []
 
-balanced_additional_dhondt()
-print("#3 done")
+E_contr = election_from_file(sys.argv[1])
 
-balanced_prevented_dhondt()
-print("#4 done")
+for p in E_contr.parties():
+    x = get_max_additional_seats_dhondt(p)
+    eff_optimal_con.append(x[0])
+    eff_strongest_con.append(x[1])
+    eff_weakest_con.append(x[2])
+    print(p, "#1 done")
+
+    eff_balanced_con.append(balanced_additional_dhondt(p))
+    print(p, "#3 done")
+
+    if dhondt_allocation(E_contr, T, K, prefer=p)[p] > 0:  # We take into account only the parties where the bribery is possible.
+        y = get_max_prevented_seats_dhondt(p)
+        eff_optimal_des.append(y[0])
+        eff_strongest_des.append(y[1])
+        eff_weakest_des.append(y[2])
+        print(p, "#2 done")
+
+        eff_balanced_des.append(balanced_prevented_dhondt(p))
+        print(p, "#4 done")
 
 
 
+print(eff_optimal_con)
+print(eff_strongest_con)
+print(eff_weakest_con)
+print(eff_balanced_con)
+
+print(eff_optimal_des)
+print(eff_strongest_des)
+print(eff_weakest_des)
+print(eff_balanced_des)
+
+print("constructive")
+print("optimal: ", np.mean(eff_optimal_con))
+print("strongest: ", np.mean(eff_strongest_con))
+print("weakest: ", np.mean(eff_weakest_con))
+print("balanced: ", np.mean(eff_balanced_con))
+
+print("destructive")
+print("optimal: ", np.mean(eff_optimal_des))
+print("strongest: ", np.mean(eff_strongest_des))
+print("weakest: ", np.mean(eff_weakest_des))
+print("balanced: ", np.mean(eff_balanced_des))
+
+
+final = open(target_dir + "final.dat", "w")
+print("%s %.5f" % ("constructive-optimal", np.mean(eff_optimal_con)), file=final)
+print("%s" % eff_optimal_con, file=final)
+
+print("%s %.5f" % ("constructive-strongest", np.mean(eff_strongest_con)), file=final)
+print("%s" % eff_strongest_con, file=final)
+
+print("%s %.5f" % ("constructive-weakest", np.mean(eff_weakest_con)), file=final)
+print("%s" % eff_weakest_con, file=final)
+
+print("%s %.5f" % ("constructive-balanced", np.mean(eff_balanced_con)), file=final)
+print("%s" % eff_balanced_con, file=final)
+
+
+print("%s %.5f" % ("destructive-optimal", np.mean(eff_optimal_des)), file=final)
+print("%s" % eff_optimal_des, file=final)
+
+print("%s %.5f" % ("destructive-strongest", np.mean(eff_strongest_des)), file=final)
+print("%s" % eff_strongest_des, file=final)
+
+print("%s %.5f" % ("destructive-weakest", np.mean(eff_weakest_des)), file=final)
+print("%s" % eff_weakest_des, file=final)
+
+print("%s %.5f" % ("destructive-balanced", np.mean(eff_balanced_des)), file=final)
+print("%s" % eff_balanced_des, file=final)
+final.close()
 
 print("Finished")
